@@ -34,14 +34,6 @@ private:
 	void CreateImageViews();
 	void CreateGraphicsPipeline();
 
-	// Struct representing swap chains from devices
-	struct SwapChainSupportDetails
-	{
-		vk::SurfaceCapabilitiesKHR capabilities;
-		std::vector<vk::SurfaceFormatKHR> formats;
-		std::vector<vk::PresentModeKHR> presentModes;
-	};
-
 	// Picking and creating devices
 	void PickPhysicalDevice();
 	bool IsDeviceSuitable(vk::PhysicalDevice device);
@@ -49,6 +41,12 @@ private:
 	void CreateLogicalDevice();
 
 	// Swap chains
+	struct SwapChainSupportDetails
+	{
+		vk::SurfaceCapabilitiesKHR capabilities;
+		std::vector<vk::SurfaceFormatKHR> formats;
+		std::vector<vk::PresentModeKHR> presentModes;
+	};
 	SwapChainSupportDetails	QuerySwapChainSupport(vk::PhysicalDevice device);
 	vk::SurfaceFormatKHR	ChoseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>& vAvailableFormats);
 	vk::PresentModeKHR		ChoseSwapPresentMode(const std::vector<vk::PresentModeKHR>& vAvailablePresentModes);
@@ -62,6 +60,10 @@ private:
 		bool IsComplete() { return graphicsFamily.has_value() && presentFamily.has_value(); }
 	};
 	QueueFamilyIndices FindQueueFamilies(vk::PhysicalDevice device);
+
+	// Shaders
+	const std::vector<char> ReadFile(const std::string& sFilename);
+	vk::ShaderModule CreateShaderModule(const std::vector<char>& vCode);
 
 	const uint32_t m_Width;
 	const uint32_t m_Height;

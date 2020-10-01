@@ -1,6 +1,7 @@
 #include "Renderer.h"
 #include <iostream>
 #include <set>
+#include <fstream>
 
 #ifdef _DEBUG
 	constexpr bool bEnableValidationLayers = true;
@@ -177,7 +178,7 @@ void Renderer::CreateLogicalDevice()
 	for (uint32_t queueFamily : uniqueQueueFamilies)
 	{
 		// Specify the queues to be created
-		vk::DeviceQueueCreateInfo queueCreateInfo;
+		vk::DeviceQueueCreateInfo queueCreateInfo{};
 		queueCreateInfo.queueFamilyIndex = indices.graphicsFamily.value();
 		queueCreateInfo.queueCount = 1;
 		queueCreateInfo.pQueuePriorities = &fPriority;
@@ -185,10 +186,10 @@ void Renderer::CreateLogicalDevice()
 	}
 
 	// Special GPU features
-	vk::PhysicalDeviceFeatures deviceFeatures;
+	vk::PhysicalDeviceFeatures deviceFeatures{};
 
 	// Create logical device
-	vk::DeviceCreateInfo createInfo;
+	vk::DeviceCreateInfo createInfo{};
 	createInfo.pQueueCreateInfos = vQueueCreateInfos.data();
 	createInfo.queueCreateInfoCount = static_cast<uint32_t>(vQueueCreateInfos.size());
 	createInfo.pEnabledFeatures = &deviceFeatures;
@@ -272,7 +273,7 @@ void Renderer::CreateSwapChain()
 		nImages = swapChainSupport.capabilities.maxImageCount; // Zero is a special number, meaning zero limits ^^^
 
 	// Create the swapchain
-	vk::SwapchainCreateInfoKHR createInfo;
+	vk::SwapchainCreateInfoKHR createInfo{};
 	createInfo.surface = m_Surface;
 	createInfo.minImageCount = nImages;
 	createInfo.imageFormat = surfaceFormat.format;
@@ -316,7 +317,7 @@ void Renderer::CreateImageViews()
 	m_SwapchainImageViews.resize(m_SwapchainImages.size()); // Allocate space
 	for (size_t i = 0; i < m_SwapchainImages.size(); ++i)
 	{
-		vk::ImageViewCreateInfo createInfo;
+		vk::ImageViewCreateInfo createInfo{};
 		createInfo.image = m_SwapchainImages[i];
 		createInfo.viewType = vk::ImageViewType::e2D; // 1D array, 2D texture or 3D texture / cubemap?
 		createInfo.format = m_SwapchainImageFormat;
@@ -336,7 +337,29 @@ void Renderer::CreateImageViews()
 
 void Renderer::CreateGraphicsPipeline()
 {
+	auto sVertexShader		= ReadFile("Shaders/vert.spv");
+	auto sFragmentShader	= ReadFile("Shaders/frag.spv");
+}
 
+const std::vector<char> Renderer::ReadFile(const std::string & sFilename)
+{
+	// Read from end of file with ate so that determining size is easier
+	std::ifstream fFile(sFilename, std::ios::ate | std::ios::binary);
+	if (!fFile.is_open()) throw std::runtime_error("Unable to open file " + sFilename + "!");
+	size_t fileSize = static_cast<size_t>(fFile.tellg());
+	std::vector<char> vBuffer(fileSize);
+
+	fFile.seekg(0);
+	fFile.read(vBuffer.data(), fileSize);
+	fFile.close();
+
+	return vBuffer;
+}
+
+vk::ShaderModule Renderer::CreateShaderModule(const std::vector<char>& vCode)
+{
+	vk::ShaderModuleCreateInfo createInfo = vk::ShaderModuleCreateInfo({}, vCode.size(), reinterpret_cast<const uint32_t*>(vCode.data()));
+	vk::ShaderModule shaderModule = m_Device.createShaderModule(&createInfo, nullptr);
 }
 
 void Renderer::PrepareFrame()
@@ -346,5 +369,5 @@ void Renderer::PrepareFrame()
 
 Renderer::~Renderer()
 {
-	
+	//for (auto imageView : m_SwapchainImageViews) imageView.destroy();
 }
