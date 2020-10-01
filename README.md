@@ -3,8 +3,13 @@ Repo for learning Vulkan
 
 ## Depdendencies
 * Vulkan SDK
-* GLFW and GLM (included)
+* GLFW
+* GLM
 * Visual Studio 2017 or higher with C++17 support
 
-## Licenses
-GLFW and GLM have their licenses included. Both can be found in the `Libraries` folder.
+Install GLFW (prebuilt binaries) and GLM in a folder called `Libraries` in the root folder.
+Eg
+```
+Libraries/glfw-3.3.2.bin.WIN64/
+Libraries/glm/
+```
