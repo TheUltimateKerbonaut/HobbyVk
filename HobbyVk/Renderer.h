@@ -35,6 +35,7 @@ private:
 	void CreateImageViews();
 	void CreateRenderPass();
 	void CreateGraphicsPipeline();
+	void CreateFramebuffers();
 
 	// Picking and creating devices
 	void PickPhysicalDevice();
@@ -105,6 +106,7 @@ private:
 	vk::Format m_SwapchainImageFormat;
 	vk::Extent2D m_SwapChainExtent;
 	std::vector<vk::UniqueImageView> m_SwapchainImageViews;
+	std::vector<vk::UniqueFramebuffer> m_SwapchainFramebuffers;
 
 	// Pipeline and render pass
 	vk::UniquePipelineLayout m_PipelineLayout;

@@ -26,6 +26,7 @@ void Renderer::InitVulkan()
 	CreateImageViews();
 	CreateRenderPass();
 	CreateGraphicsPipeline();
+	CreateFramebuffers();
 }
 
 void Renderer::CreateInstance()
@@ -611,6 +612,27 @@ void Renderer::CreateRenderPass()
 	renderPassInfo.subpassCount = 1;
 	renderPassInfo.pSubpasses = &subpass;
 	m_RenderPass = m_Device.get().createRenderPassUnique(renderPassInfo);
+}
+
+void Renderer::CreateFramebuffers()
+{
+	// Create a framebuffer for each image view in the swapchain
+	m_SwapchainFramebuffers.resize(m_SwapchainImageViews.size());
+
+	for (size_t i = 0; i < m_SwapchainImageViews.size(); ++i)
+	{
+		vk::ImageView attachments[] = { m_SwapchainImageViews[i].get() };
+		
+		vk::FramebufferCreateInfo framebufferInfo{};
+		framebufferInfo.renderPass = m_RenderPass.get();
+		framebufferInfo.attachmentCount = 1;
+		framebufferInfo.pAttachments = attachments;
+		framebufferInfo.width = m_SwapChainExtent.width;
+		framebufferInfo.height = m_SwapChainExtent.height;
+		framebufferInfo.layers = 1;
+
+		m_SwapchainFramebuffers[i] = m_Device.get().createFramebufferUnique(framebufferInfo);
+	}
 }
 
 void Renderer::PrepareFrame()
