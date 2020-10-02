@@ -457,6 +457,55 @@ void Renderer::CreateGraphicsPipeline()
 	vertexInputInfo.vertexAttributeDescriptionCount = 0;
 	vertexInputInfo.pVertexAttributeDescriptions = nullptr; // optional
 
+	// Input assembly - what kind of geometry will be drawn and if primitive
+	// restart should be enabled
+	vk::PipelineInputAssemblyStateCreateInfo inputAssembly{};
+	inputAssembly.topology = vk::PrimitiveTopology::eTriangleList;
+	inputAssembly.primitiveRestartEnable = static_cast<vk::Bool32>(false);
+
+	// Viewport
+	vk::Viewport viewport{};
+	viewport.x = 0.0f;
+	viewport.y = 0.0f;
+	viewport.width = (float)m_SwapChainExtent.width;
+	viewport.height = (float)m_SwapChainExtent.height;
+	viewport.minDepth = 0.0f; // Must be within [0,1], but min
+	viewport.maxDepth = 1.0f; // can be higher than max
+
+	// Scissors - region in which pixels will actually be stored
+	vk::Rect2D scissor{};
+	scissor.offset = { 0, 0 };
+	scissor.extent = m_SwapChainExtent;
+
+	// Combine viewport and scissors into a viewport state.
+	vk::PipelineViewportStateCreateInfo viewportState{};
+	viewportState.viewportCount = 1;
+	viewportState.pViewports = &viewport;
+	viewportState.scissorCount = 1;
+	viewportState.pScissors = &scissor;
+
+	// Rasteris(z)er - takes care of depth testing, face culling, the scissor test,
+	// fill mode (wireframe rendering or polygons), and, erm.... rasteris(z)ing
+	vk::PipelineRasterizationStateCreateInfo rasterizer{};
+	rasterizer.depthClampEnable = static_cast<vk::Bool32>(false); // If true, clamp fragments too near or far apart instead of discarding them
+	rasterizer.rasterizerDiscardEnable = static_cast<vk::Bool32>(false); // Basically disables any output to the framebufer
+	rasterizer.polygonMode = vk::PolygonMode::eFill; // Important: using any other mode than fill requires a GPU feature!
+	rasterizer.lineWidth = 1.0f; // Anything thicker than 1.0 requires enabling the wideLines GPU feature
+	rasterizer.cullMode = vk::CullModeFlagBits::eBack;
+	rasterizer.frontFace = vk::FrontFace::eClockwise;
+	rasterizer.depthBiasEnable = VK_FALSE; // The depth bias can add a constant value to depthmaps, useful for shadowmaps
+	rasterizer.depthBiasConstantFactor = 0.0f; // Optional
+	rasterizer.depthBiasClamp = 0.0f; // Optional
+	rasterizer.depthBiasSlopeFactor = 0.0f; // Optional
+
+	// Multisampling - disabled for now
+	vk::PipelineMultisampleStateCreateInfo multisampling{};
+	multisampling.sampleShadingEnable = static_cast<vk::Bool32>(false);
+	multisampling.rasterizationSamples = vk::SampleCountFlagBits::e1;
+	multisampling.minSampleShading = 1.0f; // Optional
+	multisampling.pSampleMask = nullptr;
+	multisampling.alphaToCoverageEnable = static_cast<vk::Bool32>(false);
+	multisampling.alphaToOneEnable = static_cast<vk::Bool32>(false);
 }
 
 const std::vector<char> Renderer::ReadFile(const std::string & sFilename)
