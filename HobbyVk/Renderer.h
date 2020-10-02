@@ -36,6 +36,8 @@ private:
 	void CreateRenderPass();
 	void CreateGraphicsPipeline();
 	void CreateFramebuffers();
+	void CreateCommandPool();
+	void CreateCommandBuffers();
 
 	// Picking and creating devices
 	void PickPhysicalDevice();
@@ -112,6 +114,10 @@ private:
 	vk::UniquePipelineLayout m_PipelineLayout;
 	vk::UniqueRenderPass m_RenderPass;
 	vk::UniquePipeline m_GraphicsPipeline;
+
+	// Command buffers
+	vk::UniqueCommandPool m_CommandPool;
+	std::vector<vk::UniqueCommandBuffer> m_CommandBuffers; // SHould be automatically freed when their commands pools are destroyed
 
 };
 

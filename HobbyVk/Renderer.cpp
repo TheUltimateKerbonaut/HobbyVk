@@ -27,6 +27,7 @@ void Renderer::InitVulkan()
 	CreateRenderPass();
 	CreateGraphicsPipeline();
 	CreateFramebuffers();
+	CreateCommandPool();
 }
 
 void Renderer::CreateInstance()
@@ -632,6 +633,54 @@ void Renderer::CreateFramebuffers()
 		framebufferInfo.layers = 1;
 
 		m_SwapchainFramebuffers[i] = m_Device.get().createFramebufferUnique(framebufferInfo);
+	}
+}
+
+void Renderer::CreateCommandPool()
+{
+	QueueFamilyIndices queueFamilyIndices = FindQueueFamilies(m_PhysicalDevice);
+
+	vk::CommandPoolCreateInfo poolInfo{};
+	poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
+	poolInfo.flags = vk::CommandPoolCreateFlagBits{};
+
+	m_Device.get().createCommandPoolUnique(poolInfo);
+}
+
+void Renderer::CreateCommandBuffers()
+{
+	m_CommandBuffers.resize(m_SwapchainFramebuffers.size());
+
+	vk::CommandBufferAllocateInfo allocateInfo{};
+	allocateInfo.commandPool = m_CommandPool.get();
+	allocateInfo.level = vk::CommandBufferLevel::ePrimary; // Primary command buffer, not owned by another
+
+	m_CommandBuffers = m_Device.get().allocateCommandBuffersUnique(allocateInfo);
+
+	// Start command buffer recording
+	for (size_t i = 0; i < m_CommandBuffers.size(); ++i)
+	{
+		vk::CommandBufferBeginInfo beginInfo{};
+		beginInfo.flags = vk::CommandBufferUsageFlags{};
+		beginInfo.pInheritanceInfo = nullptr; // Only needed for secondary command buffers
+
+		vk::RenderPassBeginInfo renderPassInfo{};
+		renderPassInfo.renderPass = m_RenderPass.get();
+		renderPassInfo.framebuffer = m_SwapchainFramebuffers[i].get();
+		renderPassInfo.renderArea.offset = { 0, 0 };
+		renderPassInfo.renderArea.extent = m_SwapChainExtent;
+
+		vk::ClearValue clearColour = vk::ClearColorValue(std::array<float, 4>{ 0.2f, 0.3f, 0.3f, 1.0f });
+		renderPassInfo.clearValueCount = 1;
+		renderPassInfo.pClearValues = &clearColour;
+		
+		m_CommandBuffers[i].get().beginRenderPass(renderPassInfo, vk::SubpassContents::eInline); // No secondary command buffers
+		
+			m_CommandBuffers[i].get().bindPipeline(vk::PipelineBindPoint::eGraphics, m_GraphicsPipeline.get());
+			m_CommandBuffers[i].get().draw(3, 1, 0, 0);
+
+		m_CommandBuffers[i].get().endRenderPass();
+
 	}
 }
 
