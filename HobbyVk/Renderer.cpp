@@ -76,7 +76,7 @@ void Renderer::CreateInstance()
 	if (bEnableValidationLayers && !CheckValidationLayerSupport()) throw new std::runtime_error("Vulkan validation layers requested but not available!");
 
 	// Create Vulkan instance
-	m_Instance = vk::createInstanceUnique(createInfo, nullptr);
+	m_Instance = vk::createInstanceUnique(createInfo);
 }
 
 bool Renderer::CheckValidationLayerSupport()
@@ -211,7 +211,7 @@ void Renderer::CreateLogicalDevice()
 		createInfo.ppEnabledLayerNames = m_vValidationLayers.data();
 	} else createInfo.enabledLayerCount = 0;
 
-	m_Device = m_PhysicalDevice.createDeviceUnique(createInfo, nullptr);
+	m_Device = m_PhysicalDevice.createDeviceUnique(createInfo);
 
 	// Retrieve queues too - only need one queue from families, so we'll use index 0
 	m_GraphicsQueue = m_Device.get().getQueue(indices.graphicsFamily.value(), 0);
@@ -398,7 +398,7 @@ void Renderer::CreateSwapChain()
 	createInfo.clipped = true; // Just clip pixels outside the window, we don't need to sample them, and I do like a good bit of performance
 	//createInfo.oldSwapchain = vk::SwapchainKHR(...); // Our swapchain can become invalid, if a window is resized for example, but what to do?...
 
-	m_Swapchain = m_Device.get().createSwapchainKHRUnique(createInfo, nullptr);
+	m_Swapchain = m_Device.get().createSwapchainKHRUnique(createInfo);
 	auto swapchainImages = m_Device.get().getSwapchainImagesKHR(m_Swapchain.get()); // "ambigious" operator "fix"
 	m_SwapchainImages = swapchainImages;
 	m_SwapchainImageFormat = surfaceFormat.format;
@@ -528,6 +528,17 @@ void Renderer::CreateGraphicsPipeline()
 	colourBlending.pAttachments = &colourBlendAttatchment;
 	colourBlending.blendConstants[0] = 0.0f;	colourBlending.blendConstants[1] = 0.0f;
 	colourBlending.blendConstants[2] = 0.0f;	colourBlending.blendConstants[3] = 0.0f;
+
+	// Todo: Dynamic state (if we want) - allows certain things to be changed at draw time,
+	// like viewport and line width, in which case the nessecary above values are ignored
+
+	// Pipeline layout - used for uniforms
+	vk::PipelineLayoutCreateInfo pipelineLayoutInfo;
+	pipelineLayoutInfo.setLayoutCount = 0; // Optional
+	pipelineLayoutInfo.pSetLayouts = nullptr; // Optional
+	pipelineLayoutInfo.pushConstantRangeCount = 0; // Optional
+	pipelineLayoutInfo.pPushConstantRanges = 0; // Optional
+	m_PipelineLayout = m_Device.get().createPipelineLayoutUnique(pipelineLayoutInfo);
 }
 
 const std::vector<char> Renderer::ReadFile(const std::string & sFilename)
@@ -548,7 +559,7 @@ const std::vector<char> Renderer::ReadFile(const std::string & sFilename)
 vk::UniqueShaderModule Renderer::CreateShaderModule(const std::vector<char>& vCode)
 {
 	vk::ShaderModuleCreateInfo createInfo = vk::ShaderModuleCreateInfo({}, vCode.size(), reinterpret_cast<const uint32_t*>(vCode.data()));
-	vk::UniqueShaderModule shaderModule = m_Device.get().createShaderModuleUnique(createInfo, nullptr);
+	vk::UniqueShaderModule shaderModule = m_Device.get().createShaderModuleUnique(createInfo);
 	return vk::UniqueShaderModule();
 }
 

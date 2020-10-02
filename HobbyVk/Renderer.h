@@ -91,12 +91,13 @@ private:
 	const std::vector<const char*> m_vValidationLayers	 =  { "VK_LAYER_KHRONOS_validation" };
 	const std::vector<const char*> m_DeviceExtensions	 =  { VK_KHR_SWAPCHAIN_EXTENSION_NAME	};
 	
-	// Devices, queue and surface
+	// Devices, queue, surface and pipeline
 	vk::PhysicalDevice m_PhysicalDevice;
 	vk::UniqueDevice m_Device; // Logical device
 	vk::Queue m_GraphicsQueue;
 	vk::Queue m_PresentQueue;
 	vk::UniqueSurfaceKHR m_Surface;
+	vk::UniquePipelineLayout m_PipelineLayout;
 
 	// Swapchains
 	vk::UniqueSwapchainKHR m_Swapchain;
