@@ -395,7 +395,7 @@ void Renderer::CreateSwapChain()
 	createInfo.preTransform = swapChainSupport.capabilities.currentTransform; // We also have the ability to specify transforms (like rotating 90 degrees or flipping)
 	createInfo.compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque; // How should transparrency be treated?..... Ignore it
 	createInfo.presentMode = presentMode;
-	createInfo.clipped = VK_TRUE; // Just clip pixels outside the window, we don't need to sample them, and I do like a good bit of performance
+	createInfo.clipped = true; // Just clip pixels outside the window, we don't need to sample them, and I do like a good bit of performance
 	//createInfo.oldSwapchain = vk::SwapchainKHR(...); // Our swapchain can become invalid, if a window is resized for example, but what to do?...
 
 	m_Swapchain = m_Device.get().createSwapchainKHRUnique(createInfo, nullptr);
@@ -461,7 +461,7 @@ void Renderer::CreateGraphicsPipeline()
 	// restart should be enabled
 	vk::PipelineInputAssemblyStateCreateInfo inputAssembly{};
 	inputAssembly.topology = vk::PrimitiveTopology::eTriangleList;
-	inputAssembly.primitiveRestartEnable = static_cast<vk::Bool32>(false);
+	inputAssembly.primitiveRestartEnable = false;
 
 	// Viewport
 	vk::Viewport viewport{};
@@ -487,8 +487,8 @@ void Renderer::CreateGraphicsPipeline()
 	// Rasteris(z)er - takes care of depth testing, face culling, the scissor test,
 	// fill mode (wireframe rendering or polygons), and, erm.... rasteris(z)ing
 	vk::PipelineRasterizationStateCreateInfo rasterizer{};
-	rasterizer.depthClampEnable = static_cast<vk::Bool32>(false); // If true, clamp fragments too near or far apart instead of discarding them
-	rasterizer.rasterizerDiscardEnable = static_cast<vk::Bool32>(false); // Basically disables any output to the framebufer
+	rasterizer.depthClampEnable = false; // If true, clamp fragments too near or far apart instead of discarding them
+	rasterizer.rasterizerDiscardEnable = false; // Basically disables any output to the framebufer
 	rasterizer.polygonMode = vk::PolygonMode::eFill; // Important: using any other mode than fill requires a GPU feature!
 	rasterizer.lineWidth = 1.0f; // Anything thicker than 1.0 requires enabling the wideLines GPU feature
 	rasterizer.cullMode = vk::CullModeFlagBits::eBack;
@@ -500,12 +500,34 @@ void Renderer::CreateGraphicsPipeline()
 
 	// Multisampling - disabled for now
 	vk::PipelineMultisampleStateCreateInfo multisampling{};
-	multisampling.sampleShadingEnable = static_cast<vk::Bool32>(false);
+	multisampling.sampleShadingEnable = false;
 	multisampling.rasterizationSamples = vk::SampleCountFlagBits::e1;
 	multisampling.minSampleShading = 1.0f; // Optional
 	multisampling.pSampleMask = nullptr;
-	multisampling.alphaToCoverageEnable = static_cast<vk::Bool32>(false);
-	multisampling.alphaToOneEnable = static_cast<vk::Bool32>(false);
+	multisampling.alphaToCoverageEnable = false;
+	multisampling.alphaToOneEnable = false;
+
+	// Todo: Depth and stencil with optional VkPipelineDepthStencilStateCreateInfo
+
+	// Colour blending - configured for alpha blending yet disabled
+	vk::PipelineColorBlendAttachmentState colourBlendAttatchment{};
+	colourBlendAttatchment.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
+	colourBlendAttatchment.blendEnable = false;
+	colourBlendAttatchment.srcColorBlendFactor = vk::BlendFactor::eSrcAlpha;
+	colourBlendAttatchment.dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
+	colourBlendAttatchment.colorBlendOp = vk::BlendOp::eAdd;
+	colourBlendAttatchment.srcAlphaBlendFactor = vk::BlendFactor::eOne;
+	colourBlendAttatchment.dstAlphaBlendFactor = vk::BlendFactor::eZero;
+	colourBlendAttatchment.alphaBlendOp = vk::BlendOp::eAdd;
+
+	// More colour blending - constants for blend factors for all the framebuffers
+	vk::PipelineColorBlendStateCreateInfo colourBlending{};
+	colourBlending.logicOpEnable = false;
+	colourBlending.logicOp = vk::LogicOp::eCopy;
+	colourBlending.attachmentCount = 1;
+	colourBlending.pAttachments = &colourBlendAttatchment;
+	colourBlending.blendConstants[0] = 0.0f;	colourBlending.blendConstants[1] = 0.0f;
+	colourBlending.blendConstants[2] = 0.0f;	colourBlending.blendConstants[3] = 0.0f;
 }
 
 const std::vector<char> Renderer::ReadFile(const std::string & sFilename)
