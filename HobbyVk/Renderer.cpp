@@ -17,6 +17,7 @@ Renderer::Renderer(const uint32_t width, const uint32_t height) : m_Width(width)
 void Renderer::InitVulkan()
 {
 	CreateInstance();
+	SetupDebugMessanger();
 	CheckValidationLayerSupport();
 	CreateSurface();
 	PickPhysicalDevice();
@@ -38,16 +39,22 @@ void Renderer::CreateInstance()
 	);
 
 	// Vulkan is platform agnostic, so an extension(s) is required to interface with the window system
-	auto glfwExtensions = m_Window.GetExtensions();
+	auto vRequiredExtensions = GetRequiredExtensions();
 
 	// Create instance info
 	vk::InstanceCreateInfo createInfo = vk::InstanceCreateInfo({}, &appInfo);
-	createInfo.enabledExtensionCount = glfwExtensions.first;
-	createInfo.ppEnabledExtensionNames = glfwExtensions.second;
+	createInfo.enabledExtensionCount = static_cast<uint32_t>(vRequiredExtensions.size());
+	createInfo.ppEnabledExtensionNames = vRequiredExtensions.data();
+	vk::DebugUtilsMessengerCreateInfoEXT debugCreateInfo; // Outside if below so as not to be destroyed before create instance
 	if (bEnableValidationLayers) 
 	{ 
 		createInfo.enabledLayerCount = static_cast<uint32_t>(m_vValidationLayers.size()); 
 		createInfo.ppEnabledLayerNames = m_vValidationLayers.data(); 
+		
+		// Debugging for instance creation
+		PopulateDebugMessengerCreateInfo(debugCreateInfo);
+		createInfo.pNext = &debugCreateInfo;
+
 	} else createInfo.enabledLayerCount = 0; // No global validation layers
 
 	// Get extensions
@@ -56,20 +63,20 @@ void Renderer::CreateInstance()
 	for (const auto& extension : vExtensions) { std::cout << "\t" << extension.extensionName << std::endl; }
 	std::cout << std::endl;
 
-	// Check that required GLFW extensions are within extensions
+	// Check that required extensions are within extensions
 	int nFoundExtensions = 0;
 	for (const auto& extension : vExtensions)
 	{
-		for (unsigned int i = 0; i < glfwExtensions.first; ++i)
-			if (!std::strcmp(extension.extensionName, glfwExtensions.second[i])) nFoundExtensions++;
+		for (const auto& requiredExtension : vRequiredExtensions)
+			if (!std::strcmp(extension.extensionName, requiredExtension)) nFoundExtensions++;
 	}
-	if (nFoundExtensions != glfwExtensions.first) throw new std::runtime_error("GLFW Vulkan extensions not supported!");
+	if (nFoundExtensions != vRequiredExtensions.size()) throw new std::runtime_error("GLFW Vulkan extensions not supported!");
 
 	// Check for validation layers
 	if (bEnableValidationLayers && !CheckValidationLayerSupport()) throw new std::runtime_error("Vulkan validation layers requested but not available!");
 
 	// Create Vulkan instance
-	m_Instance = vk::createInstance(createInfo, nullptr);
+	m_Instance = vk::createInstanceUnique(createInfo, nullptr);
 }
 
 bool Renderer::CheckValidationLayerSupport()
@@ -93,14 +100,17 @@ bool Renderer::CheckValidationLayerSupport()
 
 void Renderer::CreateSurface()
 {
-	if (glfwCreateWindowSurface(m_Instance, m_Window.m_Window, nullptr, reinterpret_cast<VkSurfaceKHR*>(&m_Surface)) != VK_SUCCESS)
+	vk::SurfaceKHR surface;
+	if (glfwCreateWindowSurface(m_Instance.get(), m_Window.m_Window, nullptr, reinterpret_cast<VkSurfaceKHR*>(&surface)) != VK_SUCCESS)
 		throw std::runtime_error("Failed to create window surface!");
+	vk::ObjectDestroy<vk::Instance, VULKAN_HPP_DEFAULT_DISPATCHER_TYPE> _deleter(m_Instance.get());
+	m_Surface = vk::UniqueSurfaceKHR(surface, _deleter);
 }
 
 void Renderer::PickPhysicalDevice()
 {
 	// List GPUs
-	std::vector<vk::PhysicalDevice> vDevices = m_Instance.enumeratePhysicalDevices();
+	std::vector<vk::PhysicalDevice> vDevices = m_Instance.get().enumeratePhysicalDevices();
 	if (vDevices.size() == 0) throw std::runtime_error("Failed to detect any Vulkan compatible GPUs!");
 
 	// Chose GPU
@@ -156,7 +166,7 @@ Renderer::QueueFamilyIndices Renderer::FindQueueFamilies(vk::PhysicalDevice devi
 	{
 		if (family.queueFlags & vk::QueueFlagBits::eGraphics) indices.graphicsFamily = i;
 
-		auto bPresentSupport = device.getSurfaceSupportKHR(i, m_Surface);
+		auto bPresentSupport = device.getSurfaceSupportKHR(i, m_Surface.get());
 		if (bPresentSupport) indices.presentFamily = i;
 
 		if (indices.IsComplete()) break;
@@ -201,20 +211,102 @@ void Renderer::CreateLogicalDevice()
 		createInfo.ppEnabledLayerNames = m_vValidationLayers.data();
 	} else createInfo.enabledLayerCount = 0;
 
-	m_Device = m_PhysicalDevice.createDevice(createInfo, nullptr);
+	m_Device = m_PhysicalDevice.createDeviceUnique(createInfo, nullptr);
 
 	// Retrieve queues too - only need one queue from families, so we'll use index 0
-	m_GraphicsQueue = m_Device.getQueue(indices.graphicsFamily.value(), 0);
-	m_PresentQueue = m_Device.getQueue(indices.presentFamily.value(), 0);
+	m_GraphicsQueue = m_Device.get().getQueue(indices.graphicsFamily.value(), 0);
+	m_PresentQueue = m_Device.get().getQueue(indices.presentFamily.value(), 0);
+}
+
+std::vector<const char*> Renderer::GetRequiredExtensions()
+{
+	std::pair<uint32_t, const char**> glfwExtensions = m_Window.GetExtensions();
+	std::vector<const char*> vExtensions(glfwExtensions.second, glfwExtensions.second + glfwExtensions.first);
+	if (bEnableValidationLayers) vExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+
+	return vExtensions;
+}
+
+VKAPI_ATTR VkBool32 VKAPI_CALL Renderer::DebugCallback(	VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+														VkDebugUtilsMessageTypeFlagsEXT messageType, 
+														VkDebugUtilsMessengerCallbackDataEXT const* pCallbackData, 
+														void* pUserData)
+{
+	// Filter out non-important stuff
+	if (static_cast<vk::DebugUtilsMessageSeverityFlagBitsEXT>(messageSeverity) < vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning) return VK_FALSE;
+
+	std::cerr << "--- DEBUG MESSAGE ---" << std::endl << "Message type: " << std::endl;
+	
+	// Message type
+	if (static_cast<vk::DebugUtilsMessageTypeFlagBitsEXT>(messageType) == vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral)		std::cerr << "general"		<< std::endl;
+	if (static_cast<vk::DebugUtilsMessageTypeFlagBitsEXT>(messageType) == vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance)	std::cerr << "performance"	<< std::endl;
+	if (static_cast<vk::DebugUtilsMessageTypeFlagBitsEXT>(messageType) == vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation)	std::cerr << "validation"	<< std::endl;
+	else std::cerr << "unknown" << std::endl;
+
+	// Message objects
+	if (pCallbackData->objectCount > 0)
+	{
+		std::cerr << "Objects:" << std::endl;
+		std::vector vObjects(pCallbackData->pObjects, pCallbackData->pObjects + pCallbackData->objectCount);
+		for (auto& object : vObjects) std::cout << "Handle:" << object.objectHandle << std::endl;
+	}
+
+	std::cerr << "Validation layer: " << pCallbackData->pMessage << std::endl;
+	return VK_FALSE;
+}
+
+VkResult Renderer::CreateDebugUtilsMessengerEXT(VkInstance instance, 
+												const VkDebugUtilsMessengerCreateInfoEXT * pCreateInfo, 
+												const VkAllocationCallbacks * pAllocator, 
+												VkDebugUtilsMessengerEXT * pDebugMessenger)
+{
+	auto function = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
+	if (function != nullptr) return function(instance, pCreateInfo, pAllocator, pDebugMessenger);
+	else return VK_ERROR_EXTENSION_NOT_PRESENT;
+}
+
+void Renderer::DestroyDebugUtilsMessangerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessanger, const VkAllocationCallbacks* pAllocator)
+{
+	auto function = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
+	if (function != nullptr) function(instance, debugMessanger, pAllocator);
+}
+
+void Renderer::PopulateDebugMessengerCreateInfo(vk::DebugUtilsMessengerCreateInfoEXT& createInfo)
+{
+	vk::DebugUtilsMessageSeverityFlagsEXT severityFlags(vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose |
+		vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
+		vk::DebugUtilsMessageSeverityFlagBitsEXT::eError);
+
+	vk::DebugUtilsMessageTypeFlagsEXT messageTypeFlags(vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |
+		vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance |
+		vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation);
+
+	createInfo = vk::DebugUtilsMessengerCreateInfoEXT(vk::DebugUtilsMessengerCreateFlagsEXT{}, severityFlags, messageTypeFlags, DebugCallback);
+}
+
+void Renderer::SetupDebugMessanger()
+{
+	if (!bEnableValidationLayers) return;
+
+	vk::DebugUtilsMessengerCreateInfoEXT createInfo;
+	PopulateDebugMessengerCreateInfo(createInfo);
+
+	// Call our fake function so that we might load the extension if it's not present
+	if (CreateDebugUtilsMessengerEXT(m_Instance.get(), &static_cast<VkDebugUtilsMessengerCreateInfoEXT>(createInfo), nullptr, &m_DebugMessenger))
+		throw std::runtime_error("Failed to setup Vulkan debug messanger!");
 }
 
 Renderer::SwapChainSupportDetails Renderer::QuerySwapChainSupport(vk::PhysicalDevice device)
 {
 	SwapChainSupportDetails details;
 
-	details.capabilities = device.getSurfaceCapabilitiesKHR(m_Surface);
-	details.formats = device.getSurfaceFormatsKHR(m_Surface);
-	details.presentModes = device.getSurfacePresentModesKHR(m_Surface);
+	// "'operator =' is ambiguous" my arse
+	auto capabilities = device.getSurfaceCapabilitiesKHR(m_Surface.get());
+	auto formats = device.getSurfaceFormatsKHR(m_Surface.get());
+	auto presentModes = device.getSurfacePresentModesKHR(m_Surface.get());
+	details.capabilities = capabilities;
+	details.formats = formats;
+	details.presentModes = presentModes;
 
 	return details;
 }
@@ -274,7 +366,7 @@ void Renderer::CreateSwapChain()
 
 	// Create the swapchain
 	vk::SwapchainCreateInfoKHR createInfo{};
-	createInfo.surface = m_Surface;
+	createInfo.surface = m_Surface.get();
 	createInfo.minImageCount = nImages;
 	createInfo.imageFormat = surfaceFormat.format;
 	createInfo.imageColorSpace = surfaceFormat.colorSpace;
@@ -306,8 +398,9 @@ void Renderer::CreateSwapChain()
 	createInfo.clipped = VK_TRUE; // Just clip pixels outside the window, we don't need to sample them, and I do like a good bit of performance
 	//createInfo.oldSwapchain = vk::SwapchainKHR(...); // Our swapchain can become invalid, if a window is resized for example, but what to do?...
 
-	m_Swapchain = m_Device.createSwapchainKHR(createInfo, nullptr);
-	m_SwapchainImages = m_Device.getSwapchainImagesKHR(m_Swapchain);
+	m_Swapchain = m_Device.get().createSwapchainKHRUnique(createInfo, nullptr);
+	auto swapchainImages = m_Device.get().getSwapchainImagesKHR(m_Swapchain.get()); // "ambigious" operator "fix"
+	m_SwapchainImages = swapchainImages;
 	m_SwapchainImageFormat = surfaceFormat.format;
 	m_SwapChainExtent = extent;
 }
@@ -331,7 +424,7 @@ void Renderer::CreateImageViews()
 		createInfo.subresourceRange.baseArrayLayer = 0;
 		createInfo.subresourceRange.layerCount = 1; // You might want more than 1 layer for stereoscopic 3D for example
 
-		m_SwapchainImageViews[i] = m_Device.createImageView(createInfo);
+		m_SwapchainImageViews[i] = m_Device.get().createImageViewUnique(createInfo);
 	}
 }
 
@@ -339,6 +432,31 @@ void Renderer::CreateGraphicsPipeline()
 {
 	auto sVertexShader		= ReadFile("Shaders/vert.spv");
 	auto sFragmentShader	= ReadFile("Shaders/frag.spv");
+
+	vk::UniqueShaderModule vertexShaderModule =	CreateShaderModule(sVertexShader);
+	vk::UniqueShaderModule fragmentShaderModule = CreateShaderModule(sFragmentShader);
+
+	// Create shaders - one could also put vertexShaderStageInfo.pSpecializationInfo
+	// so as to set shader contents, allowing optimisation of if statements and the like
+	vk::PipelineShaderStageCreateInfo vertexShaderStageInfo = {};
+	vertexShaderStageInfo.stage = vk::ShaderStageFlagBits::eVertex;
+	vertexShaderStageInfo.module = vertexShaderModule.get();
+	vertexShaderStageInfo.pName = "main"; // main() in shader
+
+	vk::PipelineShaderStageCreateInfo fragmentShaderStageInfo = {};
+	fragmentShaderStageInfo.stage = vk::ShaderStageFlagBits::eFragment;
+	fragmentShaderStageInfo.module = fragmentShaderModule.get();
+	fragmentShaderStageInfo.pName = "main";  // main() in shader
+	
+	vk::PipelineShaderStageCreateInfo shaderStages[] = { vertexShaderStageInfo, fragmentShaderStageInfo };
+
+	// Vertex input - none for now
+	vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
+	vertexInputInfo.vertexBindingDescriptionCount = 0;
+	vertexInputInfo.pVertexBindingDescriptions = nullptr; // optional
+	vertexInputInfo.vertexAttributeDescriptionCount = 0;
+	vertexInputInfo.pVertexAttributeDescriptions = nullptr; // optional
+
 }
 
 const std::vector<char> Renderer::ReadFile(const std::string & sFilename)
@@ -356,10 +474,11 @@ const std::vector<char> Renderer::ReadFile(const std::string & sFilename)
 	return vBuffer;
 }
 
-vk::ShaderModule Renderer::CreateShaderModule(const std::vector<char>& vCode)
+vk::UniqueShaderModule Renderer::CreateShaderModule(const std::vector<char>& vCode)
 {
 	vk::ShaderModuleCreateInfo createInfo = vk::ShaderModuleCreateInfo({}, vCode.size(), reinterpret_cast<const uint32_t*>(vCode.data()));
-	vk::ShaderModule shaderModule = m_Device.createShaderModule(&createInfo, nullptr);
+	vk::UniqueShaderModule shaderModule = m_Device.get().createShaderModuleUnique(createInfo, nullptr);
+	return vk::UniqueShaderModule();
 }
 
 void Renderer::PrepareFrame()
@@ -369,5 +488,5 @@ void Renderer::PrepareFrame()
 
 Renderer::~Renderer()
 {
-	//for (auto imageView : m_SwapchainImageViews) imageView.destroy();
+	if (bEnableValidationLayers) DestroyDebugUtilsMessangerEXT(m_Instance.get(), m_DebugMessenger, nullptr);
 }
