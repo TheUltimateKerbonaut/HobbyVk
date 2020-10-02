@@ -33,6 +33,7 @@ private:
 	void CreateSurface();
 	void CreateSwapChain();
 	void CreateImageViews();
+	void CreateRenderPass();
 	void CreateGraphicsPipeline();
 
 	// Picking and creating devices
@@ -91,13 +92,12 @@ private:
 	const std::vector<const char*> m_vValidationLayers	 =  { "VK_LAYER_KHRONOS_validation" };
 	const std::vector<const char*> m_DeviceExtensions	 =  { VK_KHR_SWAPCHAIN_EXTENSION_NAME	};
 	
-	// Devices, queue, surface and pipeline
+	// Devices, queue, surface
 	vk::PhysicalDevice m_PhysicalDevice;
 	vk::UniqueDevice m_Device; // Logical device
 	vk::Queue m_GraphicsQueue;
 	vk::Queue m_PresentQueue;
 	vk::UniqueSurfaceKHR m_Surface;
-	vk::UniquePipelineLayout m_PipelineLayout;
 
 	// Swapchains
 	vk::UniqueSwapchainKHR m_Swapchain;
@@ -105,6 +105,12 @@ private:
 	vk::Format m_SwapchainImageFormat;
 	vk::Extent2D m_SwapChainExtent;
 	std::vector<vk::UniqueImageView> m_SwapchainImageViews;
+
+	// Pipeline and render pass
+	vk::UniquePipelineLayout m_PipelineLayout;
+	vk::UniqueRenderPass m_RenderPass;
+	vk::UniquePipeline m_GraphicsPipeline;
+
 };
 
 #endif

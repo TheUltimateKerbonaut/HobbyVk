@@ -24,6 +24,7 @@ void Renderer::InitVulkan()
 	CreateLogicalDevice();
 	CreateSwapChain();
 	CreateImageViews();
+	CreateRenderPass();
 	CreateGraphicsPipeline();
 }
 
@@ -539,6 +540,26 @@ void Renderer::CreateGraphicsPipeline()
 	pipelineLayoutInfo.pushConstantRangeCount = 0; // Optional
 	pipelineLayoutInfo.pPushConstantRanges = 0; // Optional
 	m_PipelineLayout = m_Device.get().createPipelineLayoutUnique(pipelineLayoutInfo);
+
+	// Create the graphics pipeline
+	vk::GraphicsPipelineCreateInfo pipelineInfo{};
+	pipelineInfo.stageCount = 2; // Fragment and vertex
+	pipelineInfo.pStages = shaderStages;
+	pipelineInfo.pVertexInputState = &vertexInputInfo;
+	pipelineInfo.pInputAssemblyState = &inputAssembly;
+	pipelineInfo.pViewportState = &viewportState;
+	pipelineInfo.pRasterizationState = &rasterizer;
+	pipelineInfo.pMultisampleState = &multisampling;
+	pipelineInfo.pDepthStencilState = nullptr; // Optional
+	pipelineInfo.pColorBlendState = &colourBlending;
+	pipelineInfo.pDynamicState = nullptr; // Optional
+	pipelineInfo.layout = m_PipelineLayout.get();
+	pipelineInfo.renderPass = m_RenderPass.get();
+	pipelineInfo.subpass = 0;
+	pipelineInfo.basePipelineHandle = vk::Pipeline {}; // Optional - these two can be used to create pipelines from others, as switching would be cheaper,
+	pipelineInfo.basePipelineIndex = -1; // Optional - as would creating them be too.
+
+	m_GraphicsPipeline = m_Device.get().createGraphicsPipelineUnique(vk::PipelineCache{}, pipelineInfo);
 }
 
 const std::vector<char> Renderer::ReadFile(const std::string & sFilename)
@@ -560,7 +581,36 @@ vk::UniqueShaderModule Renderer::CreateShaderModule(const std::vector<char>& vCo
 {
 	vk::ShaderModuleCreateInfo createInfo = vk::ShaderModuleCreateInfo({}, vCode.size(), reinterpret_cast<const uint32_t*>(vCode.data()));
 	vk::UniqueShaderModule shaderModule = m_Device.get().createShaderModuleUnique(createInfo);
-	return vk::UniqueShaderModule();
+	return shaderModule;
+}
+
+void Renderer::CreateRenderPass()
+{
+	vk::AttachmentDescription colourAttatchment{};
+	colourAttatchment.format = m_SwapchainImageFormat;
+	colourAttatchment.samples = vk::SampleCountFlagBits::e1; // No multisampling
+	colourAttatchment.loadOp = vk::AttachmentLoadOp::eClear; // Clear to black before drawing a new frame
+	colourAttatchment.storeOp = vk::AttachmentStoreOp::eStore; // We'd like to read this framebuffer from memory later
+	colourAttatchment.initialLayout = vk::ImageLayout::eUndefined; // We don't care what the previous layout was, we're cleaing it anyway
+	colourAttatchment.finalLayout = vk::ImageLayout::ePresentSrcKHR; //  We want the image to be ready for presentation to the swap chain later
+
+	// Subpasses and attachment references - only need one
+	vk::AttachmentReference colourAttachmentReference{};
+	colourAttachmentReference.attachment = 0;
+	colourAttachmentReference.layout = vk::ImageLayout::eColorAttachmentOptimal; // Best for colour attachments
+
+	vk::SubpassDescription subpass{};
+	subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics; // It's for graphics!
+	subpass.colorAttachmentCount = 1; // layout(location = 0) out vec4 outColor, could also mention pInputAttachments, 
+	subpass.pColorAttachments = &colourAttachmentReference; // pResolveAttachments, pDepthStencilAttachment, and pPreserveAttachments too.
+
+	// Create the render pass
+	vk::RenderPassCreateInfo renderPassInfo{};
+	renderPassInfo.attachmentCount = 1;
+	renderPassInfo.pAttachments = &colourAttatchment;
+	renderPassInfo.subpassCount = 1;
+	renderPassInfo.pSubpasses = &subpass;
+	m_RenderPass = m_Device.get().createRenderPassUnique(renderPassInfo);
 }
 
 void Renderer::PrepareFrame()
