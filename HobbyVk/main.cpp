@@ -7,8 +7,10 @@ int main()
 
 	while (renderer.ShouldRun())
 	{
-		renderer.PrepareFrame();
+		renderer.DrawFrame();
 	}
+
+	renderer.WaitIdle();
 
 	return 0;
 }

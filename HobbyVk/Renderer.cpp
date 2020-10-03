@@ -28,6 +28,8 @@ void Renderer::InitVulkan()
 	CreateGraphicsPipeline();
 	CreateFramebuffers();
 	CreateCommandPool();
+	CreateCommandBuffers();
+	CreateSyncObjects();
 }
 
 void Renderer::CreateInstance()
@@ -613,6 +615,17 @@ void Renderer::CreateRenderPass()
 	renderPassInfo.subpassCount = 1;
 	renderPassInfo.pSubpasses = &subpass;
 	m_RenderPass = m_Device.get().createRenderPassUnique(renderPassInfo);
+
+	// Subpass dependency
+	vk::SubpassDependency dependency{};
+	dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+	dependency.dstSubpass = 0;
+	dependency.srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+	dependency.srcAccessMask = vk::AccessFlagBits{};
+	dependency.dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+	dependency.dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
+	renderPassInfo.dependencyCount = 1;
+	renderPassInfo.pDependencies = &dependency;
 }
 
 void Renderer::CreateFramebuffers()
@@ -642,9 +655,8 @@ void Renderer::CreateCommandPool()
 
 	vk::CommandPoolCreateInfo poolInfo{};
 	poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
-	poolInfo.flags = vk::CommandPoolCreateFlagBits{};
 
-	m_Device.get().createCommandPoolUnique(poolInfo);
+	m_CommandPool = m_Device.get().createCommandPoolUnique(poolInfo);
 }
 
 void Renderer::CreateCommandBuffers()
@@ -654,6 +666,7 @@ void Renderer::CreateCommandBuffers()
 	vk::CommandBufferAllocateInfo allocateInfo{};
 	allocateInfo.commandPool = m_CommandPool.get();
 	allocateInfo.level = vk::CommandBufferLevel::ePrimary; // Primary command buffer, not owned by another
+	allocateInfo.commandBufferCount = static_cast<uint32_t>(m_CommandBuffers.size());
 
 	m_CommandBuffers = m_Device.get().allocateCommandBuffersUnique(allocateInfo);
 
@@ -663,6 +676,8 @@ void Renderer::CreateCommandBuffers()
 		vk::CommandBufferBeginInfo beginInfo{};
 		beginInfo.flags = vk::CommandBufferUsageFlags{};
 		beginInfo.pInheritanceInfo = nullptr; // Only needed for secondary command buffers
+
+		m_CommandBuffers[i].get().begin(beginInfo);
 
 		vk::RenderPassBeginInfo renderPassInfo{};
 		renderPassInfo.renderPass = m_RenderPass.get();
@@ -681,15 +696,89 @@ void Renderer::CreateCommandBuffers()
 
 		m_CommandBuffers[i].get().endRenderPass();
 
+		m_CommandBuffers[i].get().end();
+
 	}
 }
 
-void Renderer::PrepareFrame()
+void Renderer::CreateSyncObjects()
 {
+	m_vImageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+	m_vRenderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+	m_vInFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
+	m_vImagesInFlight.resize(m_SwapchainImages.size());
+
+	vk::SemaphoreCreateInfo semaphoreInfo{};
+	vk::FenceCreateInfo fenceInfo = vk::FenceCreateInfo(vk::FenceCreateFlagBits::eSignaled);
+
+	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+	{
+		m_vImageAvailableSemaphores[i] = m_Device.get().createSemaphoreUnique(semaphoreInfo);
+		m_vRenderFinishedSemaphores[i] = m_Device.get().createSemaphoreUnique(semaphoreInfo);
+		m_vInFlightFences[i] = m_Device.get().createFence(fenceInfo);
+	}
+}
+
+void Renderer::DrawFrame()
+{
+	// Wait for in flight fences
+	m_Device.get().waitForFences(m_vInFlightFences[m_nCurrentFrame], true, UINT64_MAX);
+
+	// Acquire next image
+	uint32_t nImageIndex = m_Device.get().acquireNextImageKHR(m_Swapchain.get(), UINT64_MAX, m_vImageAvailableSemaphores[m_nCurrentFrame].get(), vk::Fence{});
+	
+	// Check if a previous frame is using this image
+	if (m_vImagesInFlight[nImageIndex] != vk::Fence{})
+		m_Device.get().waitForFences(m_vImagesInFlight[nImageIndex], true, UINT64_MAX);
+	// Mark the iamge as now being in use by this frame
+	m_vImagesInFlight[nImageIndex] = m_vInFlightFences[m_nCurrentFrame];
+
+	// Submit info
+	vk::SubmitInfo submitInfo{};
+
+	// Semaphores
+	vk::Semaphore waitSemaphores[] = { m_vImageAvailableSemaphores[m_nCurrentFrame].get() };
+	vk::PipelineStageFlags waitStages[] = { vk::PipelineStageFlagBits::eColorAttachmentOutput }; //
+	submitInfo.waitSemaphoreCount = 1;
+	submitInfo.pWaitSemaphores = waitSemaphores;
+	submitInfo.pWaitDstStageMask = waitStages;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &m_CommandBuffers[nImageIndex].get();
+
+	// More sempahores
+	vk::Semaphore signalSemaphores[] = { m_vRenderFinishedSemaphores[m_nCurrentFrame].get() };
+	submitInfo.signalSemaphoreCount = 1;
+	submitInfo.pSignalSemaphores = signalSemaphores;
+
+	// Reset fences
+	m_Device.get().resetFences(m_vInFlightFences[m_nCurrentFrame]);
+
+	// Submit commands
+	m_GraphicsQueue.submit(submitInfo, m_vInFlightFences[m_nCurrentFrame]);
+
+	vk::PresentInfoKHR presentInfo{};
+	presentInfo.waitSemaphoreCount = 1;
+	presentInfo.pWaitSemaphores = signalSemaphores;
+
+	vk::SwapchainKHR swapChains[] = { m_Swapchain.get() };
+	presentInfo.swapchainCount = 1;
+	presentInfo.pSwapchains = swapChains;
+	presentInfo.pImageIndices = &nImageIndex;
+
+	m_PresentQueue.presentKHR(presentInfo);
+
 	m_Window.Update();
+	m_nCurrentFrame = (m_nCurrentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+}
+
+void Renderer::WaitIdle()
+{
+	m_Device.get().waitIdle();
 }
 
 Renderer::~Renderer()
 {
+	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) m_Device.get().destroyFence(m_vInFlightFences[i]);
+
 	if (bEnableValidationLayers) DestroyDebugUtilsMessangerEXT(m_Instance.get(), m_DebugMessenger, nullptr);
 }

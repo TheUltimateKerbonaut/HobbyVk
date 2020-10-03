@@ -21,7 +21,8 @@ public:
 
 	inline bool ShouldRun() { return !m_Window.ShouldClose(); }
 
-	void PrepareFrame();
+	void DrawFrame();
+	void WaitIdle();
 
 private:
 
@@ -38,6 +39,7 @@ private:
 	void CreateFramebuffers();
 	void CreateCommandPool();
 	void CreateCommandBuffers();
+	void CreateSyncObjects();
 
 	// Picking and creating devices
 	void PickPhysicalDevice();
@@ -118,6 +120,14 @@ private:
 	// Command buffers
 	vk::UniqueCommandPool m_CommandPool;
 	std::vector<vk::UniqueCommandBuffer> m_CommandBuffers; // SHould be automatically freed when their commands pools are destroyed
+
+	// Sephamores
+	const int MAX_FRAMES_IN_FLIGHT = 2;
+	std::vector<vk::UniqueSemaphore> m_vImageAvailableSemaphores;
+	std::vector<vk::UniqueSemaphore> m_vRenderFinishedSemaphores;
+	std::vector<vk::Fence> m_vInFlightFences; // We do some funky stuff,
+	std::vector<vk::Fence> m_vImagesInFlight; // best manage memory ourselves
+	size_t m_nCurrentFrame;
 
 };
 
